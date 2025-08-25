@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { ethers } from "ethers";
-import { Wallet, ChevronDown, Globe, Check } from "lucide-react";
+import { Wallet, ChevronDown, Check, LogOut, Copy, Check as CheckIcon } from "lucide-react";
+import { useWalletStore, NETWORKS } from "../stores/walletStore";
 
 // 扩展 Window 接口以包含 ethereum
 declare global {
@@ -14,189 +14,94 @@ declare global {
 	}
 }
 
-// 网络配置
-const NETWORKS = {
-	ethereum: {
-		chainId: "0x1",
-		chainName: "Ethereum Mainnet",
-		nativeCurrency: {
-			name: "Ether",
-			symbol: "ETH",
-			decimals: 18,
-		},
-		rpcUrls: ["https://mainnet.infura.io/v3/"],
-		blockExplorerUrls: ["https://etherscan.io/"],
-	},
-	bsc: {
-		chainId: "0x38",
-		chainName: "Binance Smart Chain",
-		nativeCurrency: {
-			name: "BNB",
-			symbol: "BNB",
-			decimals: 18,
-		},
-		rpcUrls: ["https://bsc-dataseed1.binance.org/"],
-		blockExplorerUrls: ["https://bscscan.com/"],
-	},
-	sepolia: {
-		chainId: "0xaa36a7",
-		chainName: "Sepolia Testnet",
-		nativeCurrency: {
-			name: "Sepolia Ether",
-			symbol: "ETH",
-			decimals: 18,
-		},
-		rpcUrls: ["https://sepolia.infura.io/v3/", "https://rpc.sepolia.org/", "https://sepolia.gateway.tenderly.co/"],
-		blockExplorerUrls: ["https://sepolia.etherscan.io/"],
-	},
-};
-
-interface WalletState {
-  address: string | null;
-  chainId: string | null;
-  isConnected: boolean;
-  balance: string;
-  ensName: string | null;
-  ensAvatar: string | null;
-}
-
 const WalletComponent: React.FC = () => {
-	const [wallet, setWallet] = useState<WalletState>({
-		address: null,
-		chainId: null,
-		isConnected: false,
-		balance: "0",
-		ensName: null,
-		ensAvatar: null,
-	});
+	// 使用 zustand store
+	const {
+		address,
+		chainId,
+		isConnected,
+		balance,
+		ensName,
+		ensAvatar,
+		connectWallet,
+		disconnectWallet,
+		switchNetwork,
+		formatAddress,
+		formatBalance,
+		getCurrentNetwork,
+		isMetaMaskInstalled,
+	} = useWalletStore();
+
+	// 本地状态
 	const [showNetworkDropdown, setShowNetworkDropdown] = useState(false);
 	const [isConnecting, setIsConnecting] = useState(false);
+	const [userDisconnected, setUserDisconnected] = useState(false);
+	const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+	const [showWalletDetails, setShowWalletDetails] = useState(false);
+	const [copiedAddress, setCopiedAddress] = useState(false);
 
-	// 检查 MetaMask 是否已安装
-	const isMetaMaskInstalled = () => {
-		return typeof window !== "undefined" && typeof window.ethereum !== "undefined";
-	};
-
-	// 获取当前网络信息
-	const getCurrentNetwork = () => {
-		const networkKey = Object.keys(NETWORKS).find((key) => NETWORKS[key as keyof typeof NETWORKS].chainId === wallet.chainId);
-		return networkKey ? NETWORKS[networkKey as keyof typeof NETWORKS] : null;
-	};
-
-	// 格式化地址
-	const formatAddress = (address: string) => {
-		return `${address.slice(0, 6)}...${address.slice(-4)}`;
-	};
-
-	// 格式化余额
-	const formatBalance = (balance: string) => {
-		const num = parseFloat(balance);
-		return num < 0.0001 ? "0" : num.toFixed(4);
-	};
-
-	// 获取账户余额
-	const getBalance = async (address: string) => {
+	// 连接钱包处理函数
+	const handleConnectWallet = async () => {
+		setIsConnecting(true);
 		try {
-			if (window.ethereum) {
-				const provider = new ethers.BrowserProvider(window.ethereum);
-				const balance = await provider.getBalance(address);
-				return ethers.formatEther(balance);
-			}
-		} catch (error) {
-			console.error("获取余额失败:", error);
-		}
-		return "0";
-	};
-
-	// 获取 ENS 信息
-	const getENSInfo = async (address: string) => {
-		try {
-			// 只有在以太坊主网时才查询 ENS
-			if (wallet.chainId === "0x1" && window.ethereum) {
-				const provider = new ethers.BrowserProvider(window.ethereum);
-				const ensName = await provider.lookupAddress(address);
-				let ensAvatar = null;
-
-				if (ensName) {
-					try {
-						const resolver = await provider.getResolver(ensName);
-						if (resolver) {
-							ensAvatar = await resolver.getAvatar();
-						}
-					} catch (error) {
-						console.log("获取 ENS 头像失败:", error);
-					}
-				}
-
-				return { ensName, ensAvatar };
-			}
-		} catch (error) {
-			console.error("获取 ENS 信息失败:", error);
-		}
-		return { ensName: null, ensAvatar: null };
-	};
-
-	// 连接钱包
-	const connectWallet = async () => {
-		if (!isMetaMaskInstalled()) {
-			alert("请安装 MetaMask 钱包！");
-			return;
-		}
-
-		try {
-			setIsConnecting(true);
-			const accounts = await window.ethereum!.request({
-				method: "eth_requestAccounts",
-			});
-
-			if (accounts.length > 0) {
-				const address = accounts[0];
-				const chainId = await window.ethereum!.request({ method: "eth_chainId" });
-				const balance = await getBalance(address);
-				const { ensName, ensAvatar } = await getENSInfo(address);
-
-				setWallet({
-					address,
-					chainId,
-					isConnected: true,
-					balance,
-					ensName,
-					ensAvatar,
-				});
-			}
-		} catch (error) {
-			console.error("连接钱包失败:", error);
+			await connectWallet();
 		} finally {
 			setIsConnecting(false);
 		}
 	};
 
-	// 切换网络
-	const switchNetwork = async (networkKey: keyof typeof NETWORKS) => {
-		if (!window.ethereum) return;
+	// 显示断开连接确认弹窗
+	const showDisconnectConfirmDialog = () => {
+		setShowDisconnectConfirm(true);
+	};
 
-		const network = NETWORKS[networkKey];
+	// 确认断开连接
+	const confirmDisconnect = () => {
+		setUserDisconnected(true);
+		disconnectWallet();
+		setShowDisconnectConfirm(false);
+	};
 
-		try {
-			await window.ethereum.request({
-				method: "wallet_switchEthereumChain",
-				params: [{ chainId: network.chainId }],
-			});
-		} catch (error: any) {
-			// 如果网络不存在，则添加网络
-			if (error.code === 4902) {
-				try {
-					await window.ethereum.request({
-						method: "wallet_addEthereumChain",
-						params: [network],
-					});
-				} catch (addError) {
-					console.error("添加网络失败:", addError);
-				}
-			} else {
-				console.error("切换网络失败:", error);
+	// 取消断开连接
+	const cancelDisconnect = () => {
+		setShowDisconnectConfirm(false);
+	};
+
+	// 显示钱包详情
+	const showWalletDetailsDialog = () => {
+		setShowWalletDetails(true);
+	};
+
+	// 隐藏钱包详情
+	const hideWalletDetails = () => {
+		setShowWalletDetails(false);
+	};
+
+	// 复制钱包地址
+	const copyAddress = async () => {
+		if (address) {
+			try {
+				await navigator.clipboard.writeText(address);
+				setCopiedAddress(true);
+				setTimeout(() => setCopiedAddress(false), 2000);
+			} catch (error) {
+				console.error('复制失败:', error);
+				// 降级方案：使用传统的复制方法
+				const textArea = document.createElement('textarea');
+				textArea.value = address;
+				document.body.appendChild(textArea);
+				textArea.select();
+				document.execCommand('copy');
+				document.body.removeChild(textArea);
+				setCopiedAddress(true);
+				setTimeout(() => setCopiedAddress(false), 2000);
 			}
 		}
+	};
+
+	// 切换网络处理函数
+	const handleSwitchNetwork = async (networkKey: keyof typeof NETWORKS) => {
+		await switchNetwork(networkKey);
 		setShowNetworkDropdown(false);
 	};
 
@@ -205,40 +110,21 @@ const WalletComponent: React.FC = () => {
 		if (!isMetaMaskInstalled()) return;
 
 		const handleAccountsChanged = async (accounts: string[]) => {
+			console.log('handleAccountsChanged', accounts);
+			
 			if (accounts.length === 0) {
-				setWallet({
-					address: null,
-					chainId: null,
-					isConnected: false,
-					balance: "0",
-					ensName: null,
-					ensAvatar: null,
-				});
+				disconnectWallet();
 			} else {
-				const balance = await getBalance(accounts[0]);
-				const { ensName, ensAvatar } = await getENSInfo(accounts[0]);
-				setWallet((prev) => ({
-					...prev,
-					address: accounts[0],
-					balance,
-					ensName,
-					ensAvatar,
-				}));
+				// 重新连接钱包以更新状态
+				await connectWallet();
 			}
 		};
 
 		const handleChainChanged = async (chainId: string) => {
-			setWallet((prev) => ({ ...prev, chainId }));
-			if (wallet.address) {
-				const balance = await getBalance(wallet.address);
-				const { ensName, ensAvatar } = await getENSInfo(wallet.address);
-				setWallet((prev) => ({
-					...prev,
-					balance,
-					ensName,
-					ensAvatar,
-				}));
-			}
+			console.log('handleChainChanged', chainId);
+			
+			// 重新连接钱包以更新状态
+			await connectWallet();
 		};
 
 		window.ethereum!.on("accountsChanged", handleAccountsChanged);
@@ -246,20 +132,13 @@ const WalletComponent: React.FC = () => {
 
 		// 检查是否已连接
 		const checkConnection = async () => {
+			// 如果用户主动断开了连接，不自动重新连接
+			if (userDisconnected) return;
+			
 			try {
 				const accounts = await window.ethereum!.request({ method: "eth_accounts" });
 				if (accounts.length > 0) {
-					const chainId = await window.ethereum!.request({ method: "eth_chainId" });
-					const balance = await getBalance(accounts[0]);
-					const { ensName, ensAvatar } = await getENSInfo(accounts[0]);
-					setWallet({
-						address: accounts[0],
-						chainId,
-						isConnected: true,
-						balance,
-						ensName,
-						ensAvatar,
-					});
+					await connectWallet();
 				}
 			} catch (error) {
 				console.error("检查连接状态失败:", error);
@@ -274,42 +153,44 @@ const WalletComponent: React.FC = () => {
 				window.ethereum.removeListener("chainChanged", handleChainChanged);
 			}
 		};
-	}, [wallet.address]);
+	}, []); // 只在组件挂载时执行一次
 
 	return (
 		<div className="relative">
-			{!wallet.isConnected ? (
+			{!isConnected ? (
 				<button
-					onClick={connectWallet}
+					onClick={handleConnectWallet}
 					disabled={isConnecting}
-					className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+					className="flex items-center gap-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-blue-400 disabled:to-purple-400 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl disabled:shadow-md"
 				>
-					<Wallet className="w-4 h-4" />
-					{isConnecting ? "连接中..." : "连接钱包"}
+					<Wallet className="w-5 h-5" />
+					<span className="text-sm font-semibold">
+						{isConnecting ? "连接中..." : "连接钱包"}
+					</span>
 				</button>
 			) : (
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-3">
 					{/* 网络显示和切换 */}
 					<div className="relative">
 						<button
 							onClick={() => setShowNetworkDropdown(!showNetworkDropdown)}
-							className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg font-medium transition-colors border"
+							className="flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-xl font-medium transition-all duration-200 border border-gray-200 shadow-sm hover:shadow-md"
 						>
-							<Globe className="w-4 h-4" />
-							<span className="text-sm">{getCurrentNetwork()?.chainName.split(" ")[0] || "未知网络"}</span>
-							<ChevronDown className="w-3 h-3" />
+							<div className="w-2 h-2 rounded-full bg-green-500"></div>
+							<span className="text-sm font-medium">{getCurrentNetwork()?.chainName.split(" ")[0] || "未知网络"}</span>
+							<ChevronDown className="w-4 h-4 text-gray-400 transition-transform duration-200" style={{ transform: showNetworkDropdown ? 'rotate(180deg)' : 'rotate(0deg)' }} />
 						</button>
 
 						{showNetworkDropdown && (
-							<div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-[180px]">
+							<div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-50 min-w-[200px] backdrop-blur-sm bg-white/95">
 								{Object.entries(NETWORKS).map(([key, network]) => (
 									<button
 										key={key}
-										onClick={() => switchNetwork(key as keyof typeof NETWORKS)}
-										className="flex items-center justify-between w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+										onClick={() => handleSwitchNetwork(key as keyof typeof NETWORKS)}
+										className="flex items-center justify-between w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150 first:rounded-t-xl last:rounded-b-xl"
 									>
-										<span>{network.chainName}</span>
-										{wallet.chainId === network.chainId && <Check className="w-4 h-4 text-green-500" />}
+										<span className="font-medium">{network.chainName}</span>
+										{chainId === network.chainId && <Check className="w-4 h-4 text-green-500" />}
 									</button>
 								))}
 							</div>
@@ -317,15 +198,19 @@ const WalletComponent: React.FC = () => {
 					</div>
 
 					{/* 钱包信息 */}
-					<div className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg border">
-						<div className="flex items-center gap-3">
+					<div 
+						className="bg-gradient-to-r from-gray-50 to-white text-gray-800 px-4 py-1 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 min-w-[200px] cursor-pointer"
+						onClick={showWalletDetailsDialog}
+						title="点击查看钱包详情"
+					>
+						<div className="flex items-start gap-3 w-full">
 							{/* ENS 头像或默认钱包图标 */}
-							<div className="flex-shrink-0">
-								{wallet.ensAvatar ? (
+							<div className="flex-shrink-0 relative">
+								{ensAvatar ? (
 									<img
-										src={wallet.ensAvatar}
+										src={ensAvatar}
 										alt="ENS Avatar"
-										className="w-8 h-8 rounded-full object-cover"
+										className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-sm"
 										onError={(e) => {
 											// 如果头像加载失败，显示默认图标
 											(e.currentTarget as HTMLElement).style.display = "none";
@@ -333,27 +218,188 @@ const WalletComponent: React.FC = () => {
 										}}
 									/>
 								) : null}
-								<div className={`w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ${wallet.ensAvatar ? "hidden" : "flex"}`}>
-									<Wallet className="w-4 h-4 text-white" />
+								<div className={`w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-sm ${ensAvatar ? "hidden" : "flex"}`}>
+									<Wallet className="w-5 h-5 text-white" />
 								</div>
+								{/* 在线状态指示器 */}
+								<div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
 							</div>
 
-							{/* 钱包信息 */}
-							<div className="text-sm min-w-0">
-								<div className="font-medium">{wallet.ensName || formatAddress(wallet.address!)}</div>
-								{wallet.ensName && <div className="text-xs text-gray-500">{formatAddress(wallet.address!)}</div>}
-								<div className="text-xs text-gray-500">
-									{formatBalance(wallet.balance)} {getCurrentNetwork()?.nativeCurrency.symbol || "ETH"}
+							{/* 钱包信息 - 自适应高度布局 */}
+							<div className="text-sm min-w-0 flex-1 overflow-hidden">
+								{/* 主要显示：ENS名称或钱包地址 */}
+								<div className="font-semibold text-gray-900 truncate leading-tight mb-1">
+									{ensName ? ensName : formatAddress(address!)}
+								</div>
+								{/* 余额显示 */}
+								<div className="text-xs text-gray-600 truncate leading-tight font-medium">
+									{formatBalance(balance)} {getCurrentNetwork()?.nativeCurrency.symbol || "ETH"}
 								</div>
 							</div>
 						</div>
 					</div>
+
+					{/* 断开连接按钮 */}
+					<button
+						onClick={showDisconnectConfirmDialog}
+						className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+						title="断开连接"
+					>
+						<LogOut className="w-4 h-4" />
+					</button>
 				</div>
 			)}
 
 			{/* 点击外部关闭下拉菜单 */}
 			{showNetworkDropdown && <div className="fixed inset-0 z-40" onClick={() => setShowNetworkDropdown(false)} />}
+
+			{/* 断开连接确认弹窗 */}
+			{showDisconnectConfirm && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={cancelDisconnect}>
+					<div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
+						<div className="flex items-center gap-4 mb-6">
+							<div className="w-12 h-12 bg-gradient-to-br from-red-100 to-pink-100 rounded-full flex items-center justify-center">
+								<LogOut className="w-6 h-6 text-red-600" />
+							</div>
+							<div>
+								<h3 className="text-xl font-bold text-gray-900">断开连接</h3>
+								<p className="text-sm text-gray-500 mt-1">确认要断开钱包连接吗？</p>
+							</div>
+						</div>
+						
+						<div className="text-sm text-gray-600 mb-8 bg-gray-50 rounded-xl p-4">
+							<p className="leading-relaxed">断开连接后，您需要重新连接才能使用钱包功能。当前连接的钱包信息将被清除。</p>
+						</div>
+
+						<div className="flex gap-3 justify-end">
+							<button
+								onClick={cancelDisconnect}
+								className="px-6 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium transition-all duration-200 hover:shadow-sm"
+							>
+								取消
+							</button>
+							<button
+								onClick={confirmDisconnect}
+								className="px-6 py-2.5 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+							>
+								确认断开
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* 钱包详情弹窗 */}
+			{showWalletDetails && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={hideWalletDetails}>
+					<div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
+						<div className="flex items-center gap-4 mb-6">
+							<div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center">
+								<Wallet className="w-6 h-6 text-blue-600" />
+							</div>
+							<div>
+								<h3 className="text-xl font-bold text-gray-900">钱包详情</h3>
+								<p className="text-sm text-gray-500 mt-1">查看完整的钱包信息</p>
+							</div>
+						</div>
+						
+						<div className="space-y-4 mb-6">
+							{/* 钱包头像和基本信息 */}
+							<div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+								<div className="relative">
+									{ensAvatar ? (
+										<img
+											src={ensAvatar}
+											alt="ENS Avatar"
+											className="w-16 h-16 rounded-full object-cover ring-2 ring-white shadow-sm"
+										/>
+									) : (
+										<div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-sm">
+											<Wallet className="w-8 h-8 text-white" />
+										</div>
+									)}
+									<div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+								</div>
+								<div className="flex-1">
+									<div className="font-semibold text-gray-900 text-lg">
+										{ensName ? ensName : "钱包地址"}
+									</div>
+									<div className="text-sm text-gray-500 mt-1">
+										{ensName ? "ENS 名称" : "普通地址"}
+									</div>
+								</div>
+							</div>
+
+							{/* 详细信息 */}
+							<div className="space-y-3">
+								{/* 钱包地址 */}
+								<div className="p-3 bg-gray-50 rounded-lg">
+									<div className="flex items-center justify-between mb-1">
+										<div className="text-xs font-medium text-gray-500">钱包地址</div>
+										<button
+											onClick={copyAddress}
+											className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+											title="复制地址"
+										>
+											{copiedAddress ? (
+												<>
+													<CheckIcon className="w-3 h-3" />
+													已复制
+												</>
+											) : (
+												<>
+													<Copy className="w-3 h-3" />
+													复制
+												</>
+											)}
+										</button>
+									</div>
+									<div className="text-sm font-mono text-gray-900 break-all">
+										{address}
+									</div>
+								</div>
+
+								{/* 网络信息 */}
+								<div className="p-3 bg-gray-50 rounded-lg">
+									<div className="text-xs font-medium text-gray-500 mb-1">当前网络</div>
+									<div className="text-sm text-gray-900">
+										{getCurrentNetwork()?.chainName || "未知网络"}
+									</div>
+								</div>
+
+								{/* 余额信息 */}
+								<div className="p-3 bg-gray-50 rounded-lg">
+									<div className="text-xs font-medium text-gray-500 mb-1">账户余额</div>
+									<div className="text-sm text-gray-900 font-medium">
+										{formatBalance(balance)} {getCurrentNetwork()?.nativeCurrency.symbol || "ETH"}
+									</div>
+								</div>
+
+								{/* ENS信息（如果有） */}
+								{ensName && (
+									<div className="p-3 bg-gray-50 rounded-lg">
+										<div className="text-xs font-medium text-gray-500 mb-1">ENS 名称</div>
+										<div className="text-sm text-gray-900 font-medium">
+											{ensName}
+										</div>
+									</div>
+								)}
+							</div>
+						</div>
+
+						<div className="flex gap-3 justify-end">
+							<button
+								onClick={hideWalletDetails}
+								className="px-6 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium transition-all duration-200 hover:shadow-sm"
+							>
+								关闭
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };
-export default WalletComponent;
+
+export default WalletComponent; 
