@@ -46,6 +46,7 @@ export interface WalletState {
 	balance: string;
 	ensName: string | null;
 	ensAvatar: string | null;
+	userDisconnected: boolean; // 用户是否主动断开连接
 }
 
 interface WalletStore extends WalletState {
@@ -159,6 +160,7 @@ export const useWalletStore = create<WalletStore>()(
 			balance: "0",
 			ensName: null,
 			ensAvatar: null,
+			userDisconnected: false,
 
 			// 状态更新方法
 			setWallet: (wallet) => set((state) => ({ ...state, ...wallet })),
@@ -169,6 +171,7 @@ export const useWalletStore = create<WalletStore>()(
 				balance: "0",
 				ensName: null,
 				ensAvatar: null,
+				userDisconnected: false,
 			}),
 
 			// 连接钱包
@@ -196,6 +199,7 @@ export const useWalletStore = create<WalletStore>()(
 							balance,
 							ensName,
 							ensAvatar,
+							userDisconnected: false, // 重置用户断开连接状态
 						});
 					}
 				} catch (error) {
@@ -212,6 +216,7 @@ export const useWalletStore = create<WalletStore>()(
 					balance: "0",
 					ensName: null,
 					ensAvatar: null,
+					userDisconnected: true, // 标记用户主动断开连接
 				});
 			},
 
@@ -289,6 +294,7 @@ export const useWalletStore = create<WalletStore>()(
 				balance: state.isConnected ? state.balance : "0",
 				ensName: state.isConnected ? state.ensName : null,
 				ensAvatar: state.isConnected ? state.ensAvatar : null,
+				userDisconnected: state.userDisconnected, // 持久化用户断开连接状态
 			}),
 		}
 	)

@@ -23,6 +23,7 @@ const WalletComponent: React.FC = () => {
 		balance,
 		ensName,
 		ensAvatar,
+		userDisconnected,
 		connectWallet,
 		disconnectWallet,
 		switchNetwork,
@@ -35,7 +36,6 @@ const WalletComponent: React.FC = () => {
 	// 本地状态
 	const [showNetworkDropdown, setShowNetworkDropdown] = useState(false);
 	const [isConnecting, setIsConnecting] = useState(false);
-	const [userDisconnected, setUserDisconnected] = useState(false);
 	const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 	const [showWalletDetails, setShowWalletDetails] = useState(false);
 	const [copiedAddress, setCopiedAddress] = useState(false);
@@ -57,7 +57,6 @@ const WalletComponent: React.FC = () => {
 
 	// 确认断开连接
 	const confirmDisconnect = () => {
-		setUserDisconnected(true);
 		disconnectWallet();
 		setShowDisconnectConfirm(false);
 	};
@@ -153,7 +152,7 @@ const WalletComponent: React.FC = () => {
 				window.ethereum.removeListener("chainChanged", handleChainChanged);
 			}
 		};
-	}, []); // 只在组件挂载时执行一次
+	}, [userDisconnected]); // 监听 userDisconnected 状态变化
 
 	return (
 		<div className="relative">
