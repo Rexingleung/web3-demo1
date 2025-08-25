@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Wallet, ChevronDown, Check, LogOut, Copy, Check as CheckIcon } from "lucide-react";
 import { useWalletStore, NETWORKS } from "../stores/walletStore";
 
@@ -31,6 +31,7 @@ const WalletComponent: React.FC = () => {
 		formatBalance,
 		getCurrentNetwork,
 		isMetaMaskInstalled,
+		updateWalletState, // 新增：用于更新状态而不触发弹窗的方法
 	} = useWalletStore();
 
 	// 本地状态
@@ -39,6 +40,12 @@ const WalletComponent: React.FC = () => {
 	const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 	const [showWalletDetails, setShowWalletDetails] = useState(false);
 	const [copiedAddress, setCopiedAddress] = useState(false);
+	
+	// 使用 ref 存储事件处理函数，避免重复添加监听器
+	const handlersRef = useRef<{
+		accountsChanged?: (accounts: string[]) => void;
+		chainChanged?: (chainId: string) => void;
+	}>({});
 
 	// 连接钱包处理函数
 	const handleConnectWallet = async () => {
@@ -104,55 +111,76 @@ const WalletComponent: React.FC = () => {
 		setShowNetworkDropdown(false);
 	};
 
+	// 账户变化处理函数 - 使用 useCallback 避免重复创建
+	const handleAccountsChanged = useCallback(async (accounts: string[]) => {
+		console.log('handleAccountsChanged', accounts);
+		
+		if (accounts.length === 0) {
+			// 账户被断开连接
+			disconnectWallet();
+		} else if (accounts[0] !== address) {
+			// 账户切换，只更新状态，不重新连接（避免弹窗）
+			await updateWalletState(accounts[0]);
+		}
+	}, [address, disconnectWallet, updateWalletState]);
+
+	// 网络变化处理函数 - 使用 useCallback 避免重复创建
+	const handleChainChanged = useCallback(async (newChainId: string) => {
+		console.log('handleChainChanged', newChainId);
+		
+		// 只更新网络状态，不重新连接（避免弹窗）
+		if (address && newChainId !== chainId) {
+			await updateWalletState(address, newChainId);
+		}
+	}, [address, chainId, updateWalletState]);
+
+	// 初始连接检查 - 避免不必要的弹窗
+	const checkInitialConnection = useCallback(async () => {
+		// 如果用户主动断开了连接，不自动重新连接
+		if (userDisconnected) return;
+		
+		// 如果已经连接，不需要重复检查
+		if (isConnected) return;
+		
+		try {
+			const accounts = await window.ethereum!.request({ method: "eth_accounts" });
+			if (accounts.length > 0) {
+				// 静默获取连接状态，不触发连接弹窗
+				await updateWalletState(accounts[0]);
+			}
+		} catch (error) {
+			console.error("检查连接状态失败:", error);
+		}
+	}, [userDisconnected, isConnected, updateWalletState]);
+
 	// 监听账户和网络变化
 	useEffect(() => {
 		if (!isMetaMaskInstalled()) return;
 
-		const handleAccountsChanged = async (accounts: string[]) => {
-			console.log('handleAccountsChanged', accounts);
-			
-			if (accounts.length === 0) {
-				disconnectWallet();
-			} else {
-				// 重新连接钱包以更新状态
-				await connectWallet();
-			}
-		};
+		// 存储当前的处理函数引用
+		handlersRef.current.accountsChanged = handleAccountsChanged;
+		handlersRef.current.chainChanged = handleChainChanged;
 
-		const handleChainChanged = async (chainId: string) => {
-			console.log('handleChainChanged', chainId);
-			
-			// 重新连接钱包以更新状态
-			await connectWallet();
-		};
-
+		// 添加事件监听器
 		window.ethereum!.on("accountsChanged", handleAccountsChanged);
 		window.ethereum!.on("chainChanged", handleChainChanged);
 
-		// 检查是否已连接
-		const checkConnection = async () => {
-			// 如果用户主动断开了连接，不自动重新连接
-			if (userDisconnected) return;
-			
-			try {
-				const accounts = await window.ethereum!.request({ method: "eth_accounts" });
-				if (accounts.length > 0) {
-					await connectWallet();
-				}
-			} catch (error) {
-				console.error("检查连接状态失败:", error);
-			}
-		};
+		// 初始连接检查
+		checkInitialConnection();
 
-		checkConnection();
-
+		// 清理函数
 		return () => {
 			if (window.ethereum) {
-				window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-				window.ethereum.removeListener("chainChanged", handleChainChanged);
+				// 移除事件监听器
+				if (handlersRef.current.accountsChanged) {
+					window.ethereum.removeListener("accountsChanged", handlersRef.current.accountsChanged);
+				}
+				if (handlersRef.current.chainChanged) {
+					window.ethereum.removeListener("chainChanged", handlersRef.current.chainChanged);
+				}
 			}
 		};
-	}, [userDisconnected]); // 监听 userDisconnected 状态变化
+	}, []); // 空依赖数组，只在组件挂载/卸载时执行
 
 	return (
 		<div className="relative">
@@ -401,4 +429,4 @@ const WalletComponent: React.FC = () => {
 	);
 };
 
-export default WalletComponent; 
+export default WalletComponent;

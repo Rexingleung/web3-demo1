@@ -57,6 +57,7 @@ interface WalletStore extends WalletState {
 	// 连接相关
 	connectWallet: () => Promise<void>;
 	disconnectWallet: () => void;
+	updateWalletState: (address: string, chainId?: string) => Promise<void>; // 新增：静默更新状态
 	
 	// 网络相关
 	switchNetwork: (networkKey: keyof typeof NETWORKS) => Promise<void>;
@@ -174,7 +175,7 @@ export const useWalletStore = create<WalletStore>()(
 				userDisconnected: false,
 			}),
 
-			// 连接钱包
+			// 连接钱包 - 会触发弹窗
 			connectWallet: async () => {
 				if (!isMetaMaskInstalled()) {
 					alert("请安装 MetaMask 钱包！");
@@ -207,6 +208,28 @@ export const useWalletStore = create<WalletStore>()(
 				}
 			},
 
+			// 静默更新钱包状态 - 不会触发弹窗
+			updateWalletState: async (address: string, newChainId?: string) => {
+				try {
+					// 如果没有提供新的chainId，则获取当前的
+					const chainId = newChainId || await window.ethereum!.request({ method: "eth_chainId" });
+					const balance = await getBalance(address);
+					const { ensName, ensAvatar } = await getENSInfo(address, chainId);
+
+					set({
+						address,
+						chainId,
+						isConnected: true,
+						balance,
+						ensName,
+						ensAvatar,
+						userDisconnected: false,
+					});
+				} catch (error) {
+					console.error("更新钱包状态失败:", error);
+				}
+			},
+
 			// 断开连接
 			disconnectWallet: () => {
 				set({
@@ -232,17 +255,10 @@ export const useWalletStore = create<WalletStore>()(
 						params: [{ chainId: network.chainId }],
 					});
 					
-					// 网络切换成功后，手动更新钱包状态
+					// 网络切换成功后，静默更新钱包状态
 					const { address } = get();
 					if (address) {
-						const balance = await getBalance(address);
-						const { ensName, ensAvatar } = await getENSInfo(address, network.chainId);
-						set({
-							chainId: network.chainId,
-							balance,
-							ensName,
-							ensAvatar,
-						});
+						await get().updateWalletState(address, network.chainId);
 					}
 				} catch (error: any) {
 					// 如果网络不存在，则添加网络
@@ -253,17 +269,10 @@ export const useWalletStore = create<WalletStore>()(
 								params: [network],
 							});
 							
-							// 添加网络成功后，也更新状态
+							// 添加网络成功后，静默更新状态
 							const { address } = get();
 							if (address) {
-								const balance = await getBalance(address);
-								const { ensName, ensAvatar } = await getENSInfo(address, network.chainId);
-								set({
-									chainId: network.chainId,
-									balance,
-									ensName,
-									ensAvatar,
-								});
+								await get().updateWalletState(address, network.chainId);
 							}
 						} catch (addError) {
 							console.error("添加网络失败:", addError);
@@ -298,4 +307,4 @@ export const useWalletStore = create<WalletStore>()(
 			}),
 		}
 	)
-); 
+);
