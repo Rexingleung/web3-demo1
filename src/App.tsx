@@ -1,4 +1,5 @@
 import Header from './components/Header';
+import Transaction from './components/Transaction';
 
 const App: React.FC = () => {
   return (
@@ -13,6 +14,7 @@ const App: React.FC = () => {
             请连接您的 MetaMask 钱包开始使用
           </p>
         </div>
+        <Transaction />
       </main>
     </div>
   );
