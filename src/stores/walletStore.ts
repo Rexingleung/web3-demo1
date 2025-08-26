@@ -34,7 +34,11 @@ export const NETWORKS = {
 			symbol: "ETH",
 			decimals: 18,
 		},
-		rpcUrls: ["https://sepolia.infura.io/v3/", "https://rpc.sepolia.org/", "https://sepolia.gateway.tenderly.co/"],
+		rpcUrls: [
+			"https://sepolia.gateway.tenderly.co/", 
+			"https://rpc.sepolia.org/",
+			"https://eth-sepolia.public.blastapi.io",
+			"https://sepolia.ethereum.publicnode.com"],
 		blockExplorerUrls: ["https://sepolia.etherscan.io/"],
 	},
 };
