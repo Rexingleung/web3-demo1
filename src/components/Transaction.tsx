@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { BrowserProvider, parseEther, isAddress, isHexString, type Eip1193Provider } from 'ethers'
 import { useWalletStore } from '../stores/walletStore'
+import { stringToHex } from '../utils/index'
 
 type TxState =
   | { status: 'idle' }
@@ -322,13 +323,26 @@ function Transaction() {
           </label>
 
           <label className="grid gap-2">
-            <span className="text-sm text-gray-600">数据 (Hex，可选)</span>
+            <span className="text-sm text-gray-600">附加数据 (可选)</span>
             <input
               className="px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-              placeholder="0x..."
-              value={dataHex}
-              onChange={(e) => setDataHex(e.target.value)}
+              placeholder="输入UTF-8文本，将自动转换为十六进制"
+              onChange={(e) => {
+                const input = e.target.value;
+                if (input) {
+                  try {
+                    const hexData = stringToHex({ input, addPrefix: true, addSpacing: false, upperCase: false });
+                    setDataHex(hexData);
+                  } catch (error) {
+                    console.error('转换失败:', error);
+                    setDataHex('');
+                  }
+                } else {
+                  setDataHex('');
+                }
+              }}
             />
+            <span className="text-sm text-gray-600">转换后的16进制数据为 {dataHex}</span>
           </label>
 
           <button

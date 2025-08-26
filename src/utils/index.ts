@@ -1,5 +1,5 @@
 // 字符串转十六进制
-export function stringToHex({ input='', addPrefix=true, addSpacing=false, upperCase=true }: { input: string; addPrefix?: boolean; addSpacing?: boolean; upperCase?: boolean }) {
+export function stringToHex({ input='', addPrefix=true, addSpacing=false, upperCase=false }: { input: string; addPrefix?: boolean; addSpacing?: boolean; upperCase?: boolean }) {
 	let errMsg = "";
 	if (!input) {
 		throw new Error("请输入要转换的字符串");

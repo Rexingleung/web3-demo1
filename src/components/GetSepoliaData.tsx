@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { JsonRpcProvider, BrowserProvider, formatEther, Interface } from "ethers";
-import { useWalletStore, NETWORKS } from "../stores/walletStore";
+import { NETWORKS } from "../stores/walletStore";
+import { hexToString } from "../utils/index";
 
 const SEPOLIA_RPC = NETWORKS.sepolia.rpcUrls[0] || "https://rpc.sepolia.org/";
 
@@ -42,6 +43,9 @@ const GetSepoliaData = () => {
 		logs?: number;
 		decoded?: { method: string; args: Record<string, string> } | null;
 	} | null>(null);
+	
+	// 转换后的UTF-8字符串
+	const [decodedData, setDecodedData] = useState<string>("");
 
 	const isValidTxHash = (hash: string) => /^0x([a-fA-F0-9]{64})$/.test(hash);
 
@@ -63,6 +67,22 @@ const GetSepoliaData = () => {
 			setLoadingBasics(false);
 		}
 	}, [provider]);
+
+	// 定时器：每隔5秒自动刷新基础数据
+	useEffect(() => {
+		// 立即执行一次
+		loadBasics();
+		
+		// 设置定时器，每隔5秒执行一次
+		const intervalId = setInterval(() => {
+			loadBasics();
+		}, 5000);
+		
+		// 清理函数：组件卸载时清除定时器
+		return () => {
+			clearInterval(intervalId);
+		};
+	}, [loadBasics]);
 
 	const fetchBalance = useCallback(async () => {
 		if (!addr) return;
@@ -108,6 +128,7 @@ const GetSepoliaData = () => {
 			setTxLoading(true);
 			setTxError("");
 			setTxInfo(null);
+			setDecodedData("");
 
 			const tx = await provider.getTransaction(input);
 			if (!tx) {
@@ -134,6 +155,17 @@ const GetSepoliaData = () => {
 				logs: receipt?.logs?.length ?? 0,
 				decoded: decoded,
 			});
+			
+			// 尝试转换data为UTF-8字符串
+			if (tx.data && tx.data !== "0x") {
+				try {
+					const utf8String = hexToString({ input: tx.data });
+					setDecodedData(utf8String);
+				} catch (error) {
+					console.warn("无法将data转换为UTF-8字符串:", error);
+					setDecodedData("");
+				}
+			}
 		} catch (e: any) {
 			const rpcCode = e?.error?.code ?? e?.code;
 			if (rpcCode === -32602) {
@@ -222,6 +254,15 @@ const GetSepoliaData = () => {
 								<pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap break-all">
 {txInfo.data}
 								</pre>
+								{/* 转换数据 */}
+								{decodedData && (
+									<div className="space-y-1">
+										<div className="text-gray-500 text-sm">Data (UTF-8)</div>
+										<pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-32 whitespace-pre-wrap break-all">
+{decodedData}
+										</pre>
+									</div>
+								)}
 							</div>
 
 							{txInfo.decoded && (
