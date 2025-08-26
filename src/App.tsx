@@ -3,6 +3,7 @@ import Transaction from './components/Transaction';
 import GetSepoliaData from './components/GetSepoliaData';
 import GetTheGraphData from './components/GetTheGraphData';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import GetUsdtData from './components/GetUsdtData';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,7 @@ const App: React.FC = () => {
         <GetSepoliaData />
         <QueryClientProvider client={queryClient}>
           <GetTheGraphData />
+          <GetUsdtData />
         </QueryClientProvider>
       </main>
     </div>
