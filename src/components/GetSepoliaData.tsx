@@ -73,15 +73,15 @@ const GetSepoliaData = () => {
 		// 立即执行一次
 		loadBasics();
 		
-		// 设置定时器，每隔5秒执行一次
-		const intervalId = setInterval(() => {
-			loadBasics();
-		}, 5000);
+		// // 设置定时器，每隔5秒执行一次
+		// const intervalId = setInterval(() => {
+		// 	loadBasics();
+		// }, 5000);
 		
-		// 清理函数：组件卸载时清除定时器
-		return () => {
-			clearInterval(intervalId);
-		};
+		// // 清理函数：组件卸载时清除定时器
+		// return () => {
+		// 	clearInterval(intervalId);
+		// };
 	}, [loadBasics]);
 
 	const fetchBalance = useCallback(async () => {
