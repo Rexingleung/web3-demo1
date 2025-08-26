@@ -1,5 +1,6 @@
 import Header from './components/Header';
 import Transaction from './components/Transaction';
+import GetSepoliaData from './components/GetSepoliaData';
 
 const App: React.FC = () => {
   return (
@@ -15,6 +16,7 @@ const App: React.FC = () => {
           </p>
         </div>
         <Transaction />
+        <GetSepoliaData />
       </main>
     </div>
   );
