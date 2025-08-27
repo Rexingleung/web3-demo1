@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { BrowserProvider, parseEther, isAddress, isHexString, type Eip1193Provider } from 'ethers'
 import { useWalletStore } from '../stores/walletStore'
+import { useTransactionStore } from '../stores/transactionStore'
 import { stringToHex } from '../utils/index'
+import TransactionProgress from './TransactionProgress'
 
 type TxState =
   | { status: 'idle' }
@@ -15,12 +17,34 @@ type TxState =
 function Transaction() {
   const [txState, setTxState] = useState<TxState>({ status: 'idle' })
   const { address: account, connectWallet, isMetaMaskInstalled, switchNetwork } = useWalletStore()
+  const { 
+    addTransaction, 
+    startBlockListening, 
+    stopBlockListening,
+    checkTransactionManually,
+    transactions,
+    currentBlockNumber 
+  } = useTransactionStore()
   const [recipient, setRecipient] = useState<string>('')
   const [amountEth, setAmountEth] = useState<string>('')
   const [dataHex, setDataHex] = useState<string>('')
   const [progressPercent, setProgressPercent] = useState<number>(0)
   const [currentConfirmations, setCurrentConfirmations] = useState<number>(0)
   const TARGET_CONFIRMATIONS = 2
+
+  // 从全局 store 获取当前交易的确认数
+  const currentTransaction = txState.status === 'submitted' 
+    ? transactions.get(txState.hash) 
+    : null
+
+  // 同步确认数状态
+  useEffect(() => {
+    if (currentTransaction) {
+      setCurrentConfirmations(currentTransaction.confirmations)
+      const pct = Math.min(100, Math.floor((currentTransaction.confirmations / TARGET_CONFIRMATIONS) * 100))
+      setProgressPercent(pct)
+    }
+  }, [currentTransaction, TARGET_CONFIRMATIONS])
 
   // 重置所有状态的函数
   const resetTransaction = useCallback(() => {
@@ -31,6 +55,15 @@ function Transaction() {
     setProgressPercent(0)
     setCurrentConfirmations(0)
   }, [])
+
+  // 启动全局区块监听
+  useEffect(() => {
+    startBlockListening().catch(console.error)
+    
+    return () => {
+      stopBlockListening()
+    }
+  }, [startBlockListening, stopBlockListening])
 
   const isMetamaskAvailable = isMetaMaskInstalled()
 
@@ -78,13 +111,13 @@ function Transaction() {
       
       await connectWallet()
       
-      if (!window.ethereum) throw new Error('無法取得帳戶')
+      if (!window.ethereum) throw new Error('无法取得账户')
       
       // 使用更稳定的方式获取账户
       const accounts = await window.ethereum.request({ method: 'eth_accounts' })
       const userAddress = accounts?.[0]
       
-      if (!userAddress) throw new Error('無法取得帳戶')
+      if (!userAddress) throw new Error('无法取得账户')
       
       setTxState({ status: 'connected', address: userAddress })
     } catch (err: unknown) {
@@ -100,12 +133,12 @@ function Transaction() {
       }
       
       if (!isAddress(recipient)) {
-        setTxState({ status: 'error', message: '收款地址無效。' })
+        setTxState({ status: 'error', message: '收款地址无效。' })
         return
       }
       
       if (dataHex && !isHexString(dataHex)) {
-        setTxState({ status: 'error', message: '資料必須為 0x 開頭的十六進制字串。' })
+        setTxState({ status: 'error', message: '数据必须为 0x 开头的十六进制字符串。' })
         return
       }
       
@@ -118,7 +151,7 @@ function Transaction() {
       })()
       
       if (!value || value <= 0n) {
-        setTxState({ status: 'error', message: '金額無效，請輸入正確 ETH 數值。' })
+        setTxState({ status: 'error', message: '金额无效，请输入正确的 ETH 数值。' })
         return
       }
 
@@ -153,81 +186,26 @@ function Transaction() {
       setTxState({ status: 'submitted', hash: tx.hash })
       setProgressPercent(10)
 
-      const trackConfirmations = async () => {
-        try {
-          // 使用 on('block') 事件监听新区块
-          const onBlock = async (newBlockNumber: number) => {
-            try {
-              const receipt = await provider.getTransactionReceipt(tx.hash)
-              if (!receipt) {
-                setProgressPercent((p) => (p < 40 ? 40 : p))
-                return
-              }
-              
-              const confirmations = Math.max(0, newBlockNumber - (receipt.blockNumber ?? newBlockNumber) + 1)
-              setCurrentConfirmations(confirmations)
-              
-              const pct = Math.min(100, Math.floor((confirmations / TARGET_CONFIRMATIONS) * 100))
-              setProgressPercent(pct)
-              
-              if (confirmations >= TARGET_CONFIRMATIONS) {
-                setTxState({ status: 'success', hash: receipt.hash })
-                provider.removeListener('block', onBlock) // 移除监听器
-                
-                // 3秒后自动重置状态，准备下一次交易
-                setTimeout(() => {
-                  resetTransaction()
-                }, 10 * 1000)
-								alert('10s后重置状态')
-              }
-            } catch (error) {
-              console.warn('检查确认数时出错:', error)
-              // 不移除监听器，继续尝试
-            }
-          }
+      // 使用全局交易监测
+      addTransaction(tx.hash, TARGET_CONFIRMATIONS, 
+        // onConfirmed 回调
+        (hash) => {
+          console.log('Transaction confirmed callback triggered:', hash)
+          setTxState({ status: 'success', hash })
+          setProgressPercent(100)
+          setCurrentConfirmations(TARGET_CONFIRMATIONS)
           
-          // 开始监听新区块
-          provider.on('block', onBlock)
-          
-          // 设置超时清理机制（5分钟）
-          setTimeout(async () => {
-            provider.removeListener('block', onBlock)
-            console.warn('交易确认监听超时')
-          	try {
-							const receipt = await tx.wait(TARGET_CONFIRMATIONS)
-							setTxState({ status: 'success', hash: receipt?.hash ?? tx.hash })
-							setProgressPercent(100)
-							setCurrentConfirmations(TARGET_CONFIRMATIONS)
-							
-							// 超时情况下也要重置状态
-							setTimeout(() => {
-								resetTransaction()
-							}, 3000)
-						} catch (waitError) {
-							setTxState({ status: 'error', message: getErrorMessage(waitError) })
-						}
-          }, 300000)
-          
-          // 立即检查一次交易状态（可能已经被挖到）
+          // 10秒后自动重置状态
           setTimeout(() => {
-            onBlock(0) // 触发一次检查，使用0作为占位符，实际会获取最新区块号
-          }, 1000)
-          
-        } catch (error) {
-          // 若监听失败，退回使用 wait 方法
-          console.warn('区块监听设置失败，使用 wait 方法:', error)
-          try {
-            const receipt = await tx.wait(TARGET_CONFIRMATIONS)
-            setTxState({ status: 'success', hash: receipt?.hash ?? tx.hash })
-            setProgressPercent(100)
-            setCurrentConfirmations(TARGET_CONFIRMATIONS)
-          } catch (err) {
-            setTxState({ status: 'error', message: getErrorMessage(err) })
-          }
+            resetTransaction()
+          }, 10 * 1000)
+        },
+        // onFailed 回调
+        (hash, error) => {
+          console.log('Transaction failed callback triggered:', hash, error)
+          setTxState({ status: 'error', message: error })
         }
-      }
-
-      trackConfirmations()
+      )
     } catch (err: unknown) {
       setTxState({ status: 'error', message: getErrorMessage(err) })
     }
@@ -355,33 +333,35 @@ function Transaction() {
         </div>
 
         {(txState.status === 'sending' || txState.status === 'submitted') && (
-          <div className="space-y-3">
-            <div className="text-sm text-gray-700">
-              交易进度：{progressPercent}%
-              {txState.status === 'submitted' ? `（确认数：${currentConfirmations}/${TARGET_CONFIRMATIONS}）` : ''}
-            </div>
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            {txState.status === 'submitted' && (
-              <div className="text-sm text-gray-800">
-                哈希值：<code className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200">{txState.hash}</code>
-                <br />
-                <a 
-                  href={`https://sepolia.etherscan.io/tx/${txState.hash}`}
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 underline ml-1"
-                >
-                  在区块浏览器中查看
-                </a>
-              </div>
-            )}
-          </div>
+          <TransactionProgress
+            status={txState.status}
+            progressPercent={progressPercent}
+            currentConfirmations={currentConfirmations}
+            targetConfirmations={TARGET_CONFIRMATIONS}
+            transactionHash={txState.status === 'submitted' ? txState.hash : ''}
+          />
         )}
+
+        {/* 显示当前区块号和交易状态（调试用） */}
+        <div className="text-xs text-gray-500 space-y-1">
+          <div>当前区块号: {currentBlockNumber}</div>
+          <div>监测中的交易数: {transactions.size}</div>
+          {txState.status === 'submitted' && (
+            <div className="space-y-1">
+              <div>当前交易确认数: {currentConfirmations}/{TARGET_CONFIRMATIONS}</div>
+              <button
+                onClick={() => {
+                  if (txState.status === 'submitted') {
+                    checkTransactionManually(txState.hash).catch(console.error)
+                  }
+                }}
+                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+              >
+                手动检查交易状态
+              </button>
+            </div>
+          )}
+        </div>
 
         {txState.status === 'error' && (
           <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm space-y-2">
