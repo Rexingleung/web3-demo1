@@ -95,7 +95,7 @@ function Transaction() {
   const sendTx = useCallback(async () => {
     try {
       if (!isMetamaskAvailable) {
-        setTxState({ status: 'error', message: '未偵測到錢包 (window.ethereum)。' })
+        setTxState({ status: 'error', message: '未检测到钱包 (window.ethereum)。' })
         return
       }
       
@@ -227,7 +227,7 @@ function Transaction() {
         }
       }
 
-      void trackConfirmations()
+      trackConfirmations()
     } catch (err: unknown) {
       setTxState({ status: 'error', message: getErrorMessage(err) })
     }
