@@ -190,7 +190,7 @@ function Transaction() {
           provider.on('block', onBlock)
           
           // 设置超时清理机制（5分钟）
-          const timeoutId = setTimeout(async () => {
+          setTimeout(async () => {
             provider.removeListener('block', onBlock)
             console.warn('交易确认监听超时')
           	try {

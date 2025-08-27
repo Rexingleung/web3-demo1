@@ -179,7 +179,7 @@ const GetSepoliaData = () => {
 	}, [txHash, provider]);
 
 	// 可选：使用连接中的浏览器 Provider 发起签名（比如以后扩展）
-	const ensureBrowserProvider = useCallback(async () => {
+	useCallback(async () => {
 		if (!window.ethereum) return null;
 		return new BrowserProvider(window.ethereum);
 	}, []);
